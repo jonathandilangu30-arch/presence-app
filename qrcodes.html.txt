@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>QR Codes Employés</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.1/build/qrcode.min.js"></script>
+<style>
+body { font-family: Arial; text-align:center; padding:20px; }
+table { margin:auto; border-collapse:collapse; }
+td, th { border:1px solid #333; padding:8px; }
+</style>
+</head>
+<body>
+<h1>QR Codes des employés</h1>
+<table id="qrTable">
+<tr><th>Nom</th><th>QR Code</th></tr>
+</table>
+
+<script>
+const SUPABASE_URL = "https://smosrvzannsxvoywopwg.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtb3Nydnphbm5zeHZveXdvcHdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQwMTIyMTQsImV4cCI6MjA3OTU4ODIxNH0.Qx9VAd_9FdIPINCgh0J_XDS0TC3O290Mot9BZCJT3S8";
+
+const supabaseClient = supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+
+async function loadQRCodes(){
+    const {data:employees, error} = await supabaseClient.from("employees").select("name,qr_code");
+    if(error){ alert("Erreur: "+error.message); return; }
+
+    const table = document.getElementById("qrTable");
+    employees.forEach(emp=>{
+        const tr=document.createElement("tr");
+        const tdName=document.createElement("td");
+        tdName.textContent=emp.name;
+        const tdQR=document.createElement("td");
+        const canvas=document.createElement("canvas");
+        QRCode.toCanvas(canvas, emp.qr_code, function(err){ if(err) console.error(err); });
+        tdQR.appendChild(canvas);
+        tr.appendChild(tdName);
+        tr.appendChild(tdQR);
+        table.appendChild(tr);
+    });
+}
+loadQRCodes();
+</script>
+</body>
+</html>

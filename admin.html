@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Admin – Présences UBC Sarl</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+<style>
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: url('background.jpg') no-repeat center center fixed;
+    background-size: cover;
+    padding: 20px;
+    color: white;
+    text-align: center;
+}
+
+.container {
+    background: rgba(0,0,0,0.85);
+    padding: 25px;
+    border-radius: 15px;
+    max-width: 500px;
+    margin: 100px auto;
+    box-shadow: 0 4px 25px rgba(0,0,0,0.5);
+}
+
+h1 { color: #00aaff; margin-bottom: 20px; }
+
+input, button {
+    width: 100%;
+    padding: 12px;
+    margin: 10px 0;
+    border-radius: 8px;
+    border: none;
+    font-size: 16px;
+}
+
+button {
+    background: #00aaff;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #0088cc;
+}
+
+#errorMsg {
+    color: red;
+    margin-top: 10px;
+    font-weight: bold;
+}
+</style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Connexion Admin</h1>
+    <input type="email" id="email" placeholder="Email">
+    <input type="password" id="password" placeholder="Mot de passe">
+    <button onclick="login()">Se connecter</button>
+    <div id="errorMsg"></div>
+</div>
+
+<!-- 📌 TON SCRIPT DOIT ÊTRE ICI — JUSTE AVANT </body> -->
+<script>
+const SUPABASE_URL = "https://smosrvzannsxvoywopwg.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtb3Nydnphbm5zeHZveXdvcHdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQwMTIyMTQsImV4cCI6MjA3OTU4ODIxNH0.Qx9VAd_9FdIPINCgh0J_XDS0TC3O290Mot9BZCJT3S8";
+
+const supabaseClient = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY
+);
+
+// Ton UUID admin
+const ADMIN_UUID = "6570ae31-ef20-4428-9f26-63b71f9eebef";
+
+async function login() {
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value.trim();
+    const errorDiv = document.getElementById("errorMsg");
+
+    errorDiv.textContent = "";
+
+    if (!email || !password) {
+        errorDiv.textContent = "Veuillez entrer email et mot de passe.";
+        return;
+    }
+
+    // Connexion Supabase
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email: email,
+        password: password
+    });
+
+    if (error) {
+        errorDiv.textContent = "Erreur : " + error.message;
+        return;
+    }
+
+    // Vérifier si admin
+    if (data.user.id === ADMIN_UUID) {
+        window.location.href = "dashboard.html";
+    } else {
+        errorDiv.textContent = "Accès refusé : vous n’êtes pas admin.";
+        await supabaseClient.auth.signOut();
+    }
+}
+</script>
+
+</body>
+</html>

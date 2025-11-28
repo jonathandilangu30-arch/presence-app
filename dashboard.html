@@ -1,0 +1,281 @@
+<!DOCTYPE html> 
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard Présences UBC Sarl</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<style>
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-image: url('background.jpg');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    padding: 20px;
+    color: white;
+}
+
+.container {
+    background: rgba(0,0,0,0.85);
+    padding: 25px;
+    border-radius: 15px;
+    max-width: 1200px;
+    margin: auto;
+    box-shadow: 0 4px 25px rgba(0,0,0,0.5);
+}
+
+h1 { text-align: center; color: #00aaff; margin-bottom: 20px; }
+.filters { display: flex; justify-content: space-between; margin-bottom: 15px; gap: 10px; }
+input, select, button { padding: 10px; border-radius: 8px; border: none; }
+input, select { width: 100%; }
+button { background: #00aaff; color: white; font-weight: bold; cursor: pointer; }
+button:hover { background: #0088cc; }
+
+table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+th, td { padding: 12px; text-align: center; }
+th { background: rgba(255, 255, 255, 0.3); }
+td { background: rgba(255, 255, 255, 0.15); border-bottom: 1px solid rgba(255,255,255,0.3); }
+.action-btn { background: #ff4d4d; padding: 6px 12px; border-radius: 5px; cursor: pointer; }
+.action-btn:hover { background: #cc0000; }
+
+#result { margin-top: 15px; text-align: center; font-size: 18px; }
+#dailyCount { font-size: 20px; font-weight: bold; margin-bottom: 10px; color: #00ff00; text-align:center; }
+</style>
+</head>
+
+<body>
+
+<div class="container">
+    <h1>Liste des Présences UBC Sarl</h1>
+
+    <div class="filters">
+        <input type="text" id="searchName" placeholder="Rechercher par nom...">
+        <input type="date" id="searchDate">
+        <button id="resetBtn">Réinitialiser</button>
+        <button id="exportBtn">📥 Exporter Excel</button>
+    </div>
+
+    <h2>Présences du jour (<span id="todayDate"></span>)</h2>
+    <div id="dailyCount">Présences aujourd'hui : 0</div>
+    <div id="todayTable"></div>
+
+    <h3>Jours passés :</h3>
+    <select id="pastDaysSelect">
+        <option value="">-- Choisir un jour --</option>
+    </select>
+    <div id="pastDayTable"></div>
+
+    <div id="result"></div>
+</div>
+
+<script>
+// ----------------------------------------------------------------------
+// 🔐 SÉCURITÉ — ACCÈS RÉSERVÉ ADMIN
+// ----------------------------------------------------------------------
+
+const SUPABASE_URL = "https://smosrvzannsxvoywopwg.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtb3Nydnphbm5zeHZveXdvcHdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQwMTIyMTQsImV4cCI6MjA3OTU4ODIxNH0.Qx9VAd_9FdIPINCgh0J_XDS0TC3O290Mot9BZCJT3S8";
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// UUID ADMIN
+const ADMIN_UUID = "6570ae31-ef20-4428-9f26-63b71f9eebef";
+
+// Vérification d’accès
+async function secureDashboard() {
+    const { data: { user } } = await supabaseClient.auth.getUser();
+
+    if (!user) {
+        alert("Accès refusé. Veuillez vous connecter.");
+        window.location.href = "admin_login.html";
+        return;
+    }
+
+    if (user.id !== ADMIN_UUID) {
+        alert("Accès refusé. Pas autorisé.");
+        await supabaseClient.auth.signOut();
+        window.location.href = "admin_login.html";
+        return;
+    }
+
+    console.log("✔ Accès autorisé");
+}
+
+secureDashboard(); // ← On lance la sécurité AVANT de charger les données
+// ----------------------------------------------------------------------
+
+
+// ----------------------------------------------------------------------
+// 🔽 TON CODE ORIGINAL REPREND ICI (rien n’a été touché)
+// ----------------------------------------------------------------------
+
+let allData = [];
+
+// Charger les présences
+async function loadPresences() {
+    const { data, error } = await supabaseClient
+        .from('daily_presence')
+        .select('id, presence_date, presence_time, employees(name)')
+        .order('presence_date', { ascending: true })
+        .order('presence_time', { ascending: true });
+
+    if(error){
+        console.error(error);
+        return;
+    }
+
+    allData = data;
+    displayData();
+}
+
+function displayData(){
+    const todayStr = new Date().toLocaleDateString();
+    document.getElementById("todayDate").textContent = todayStr;
+
+    const todayData = allData.filter(r => new Date(r.presence_date).toLocaleDateString() === todayStr);
+    const pastData = allData.filter(r => new Date(r.presence_date).toLocaleDateString() !== todayStr);
+
+    document.getElementById("todayTable").innerHTML = generateTableHTML(todayData, true);
+    document.getElementById("dailyCount").textContent = `Présences aujourd'hui : ${todayData.length}`;
+
+    const select = document.getElementById("pastDaysSelect");
+    select.innerHTML = `<option value="">-- Choisir un jour --</option>`;
+
+    const pastDays = [...new Set(pastData.map(r => new Date(r.presence_date).toLocaleDateString()))]
+        .sort((a,b) => new Date(b) - new Date(a));
+
+    pastDays.forEach(date => {
+        const option = document.createElement("option");
+        option.value = date;
+        option.textContent = date;
+        select.appendChild(option);
+    });
+
+    select.onchange = () => {
+        const selectedDate = select.value;
+        if(!selectedDate){
+            document.getElementById("pastDayTable").innerHTML = "";
+            return;
+        }
+        const dayData = pastData.filter(r => new Date(r.presence_date).toLocaleDateString() === selectedDate);
+        document.getElementById("pastDayTable").innerHTML = generateTableHTML(dayData, true);
+    };
+}
+
+function generateTableHTML(rows, includeAction = false){
+    if(rows.length === 0) return "<p>Aucune présence</p>";
+    let html = `<table><thead><tr><th>Nom</th><th>Heure</th>${includeAction?'<th>Action</th>':''}</tr></thead><tbody>`;
+    rows.forEach(r=>{
+        html += `<tr>
+            <td>${r.employees?.name || "N/A"}</td>
+            <td>${r.presence_time || ""}</td>
+            ${includeAction?`<td><button class="action-btn" onclick="deletePresence(${r.id})">Supprimer</button></td>`:''}
+        </tr>`;
+    });
+    html += `</tbody></table>`;
+    return html;
+}
+
+async function deletePresence(id){
+    if(!confirm("Voulez-vous supprimer cette présence ?")) return;
+    const { error } = await supabaseClient.from('daily_presence').delete().eq('id', id);
+    if(error) { alert("Erreur : "+error.message); return; }
+    loadPresences();
+}
+
+document.getElementById("searchName").addEventListener("input", filterData);
+document.getElementById("searchDate").addEventListener("change", filterData);
+document.getElementById("resetBtn").addEventListener("click", resetFilters);
+
+function filterData(){
+    const name = document.getElementById("searchName").value.toLowerCase();
+    const date = document.getElementById("searchDate").value;
+    let filtered = allData;
+
+    if(name){
+        filtered = filtered.filter(r => r.employees?.name.toLowerCase().includes(name));
+    }
+    if(date){
+        filtered = filtered.filter(r => r.presence_date.startsWith(date));
+    }
+
+    displayDataFiltered(filtered);
+}
+
+function resetFilters(){
+    document.getElementById("searchName").value = "";
+    document.getElementById("searchDate").value = "";
+    displayData();
+}
+
+function displayDataFiltered(filtered){
+    const todayStr = new Date().toLocaleDateString();
+    const todayData = filtered.filter(r => new Date(r.presence_date).toLocaleDateString() === todayStr);
+    const pastData = filtered.filter(r => new Date(r.presence_date).toLocaleDateString() !== todayStr);
+
+    document.getElementById("todayTable").innerHTML = generateTableHTML(todayData, true);
+    document.getElementById("dailyCount").textContent = `Présences aujourd'hui : ${todayData.length}`;
+
+    const select = document.getElementById("pastDaysSelect");
+    select.innerHTML = `<option value="">-- Choisir un jour --</option>`;
+    const pastDays = [...new Set(pastData.map(r => new Date(r.presence_date).toLocaleDateString()))]
+        .sort((a,b) => new Date(b) - new Date(a));
+    pastDays.forEach(date => {
+        const option = document.createElement("option");
+        option.value = date;
+        option.textContent = date;
+        select.appendChild(option);
+    });
+
+    if(select.value){
+        const dayData = pastData.filter(r => new Date(r.presence_date).toLocaleDateString() === select.value);
+        document.getElementById("pastDayTable").innerHTML = generateTableHTML(dayData, true);
+    } else {
+        document.getElementById("pastDayTable").innerHTML = "";
+    }
+}
+
+document.getElementById("exportBtn").addEventListener("click", ()=>{
+    let tableDiv = document.getElementById("todayTable");
+    let sheetName = new Date().toLocaleDateString().replace(/[\\\/:*?"<>|]/g,'_').substring(0,31);
+
+    const pastSelect = document.getElementById("pastDaysSelect");
+    if(pastSelect.value){
+        tableDiv = document.getElementById("pastDayTable");
+        sheetName = pastSelect.value.replace(/[\\\/:*?"<>|]/g,'_').substring(0,31);
+    }
+
+    const table = tableDiv.querySelector("table");
+    if(!table){ alert("Aucune donnée à exporter !"); return; }
+
+    const data = [];
+    table.querySelectorAll("tbody tr").forEach(tr=>{
+        const tds = tr.querySelectorAll("td");
+        data.push({
+            "Nom": tds[0].innerText,
+            "Heure": tds[1].innerText,
+            "Date": sheetName
+        });
+    });
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+    const wbout = XLSX.write(wb,{bookType:'xlsx',type:'array'});
+    const blob = new Blob([wbout],{type:"application/octet-stream"});
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `Présences_${sheetName}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    alert("Export terminé !");
+});
+
+loadPresences();
+</script>
+
+</body>
+</html>

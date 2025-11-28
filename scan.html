@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Scan QR – Présence Ultra-Robuste</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="html5-qrcode.min.js"></script> <!-- Version locale -->
+<style>
+body {
+    font-family: Arial; 
+    text-align:center; 
+    padding:20px; 
+    background: url('background.jpg') no-repeat center center fixed; 
+    background-size: cover;
+}
+#reader { width:320px; margin:auto; margin-top:20px; border-radius:12px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
+#result { margin-top:25px; font-size:20px; font-weight:bold; }
+.success{color:green;} 
+.error{color:red;}
+button,input[type="file"] { margin-top:15px; padding:10px; font-size:16px; border-radius:8px; border:none; cursor:pointer; }
+#flash { width:50px; height:50px; background:green; border-radius:50%; margin:auto; display:none; animation: flashAnim 0.5s ease; }
+@keyframes flashAnim { 0% { transform: scale(0.5); opacity:0; } 50% { transform: scale(1.2); opacity:1; } 100% { transform: scale(1); opacity:0; } }
+</style>
+</head>
+<body>
+<h1>Scanner le QR Code</h1>
+
+<div id="reader"></div>
+<div id="flash"></div>
+<input type="file" id="fileInput" accept="image/*"><br>
+<button id="toggleFlashBtn">Activer/Désactiver Lampe</button>
+<div id="result"></div>
+
+<script>
+const SUPABASE_URL = "https://smosrvzannsxvoywopwg.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtb3Nydnphbm5zeHZveXdvcHdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQwMTIyMTQsImV4cCI6MjA3OTU4ODIxNH0.Qx9VAd_9FdIPINCgh0J_XDS0TC3O290Mot9BZCJT3S8";
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let html5QrCode;
+let torchOn = false;
+
+// Nettoyage QR
+function cleanQrCode(rawQr){
+    if(!rawQr) return null;
+    let code = rawQr.replace(/[\u200B-\u200D\uFEFF\s\n\r\t]+/g,'').toUpperCase();
+    const match = code.match(/QR[0-9A-Z]+/i);
+    return match ? match[0] : null;
+}
+
+// Enregistrement présence
+async function registerPresence(qrCode){
+    const resultDiv = document.getElementById("result");
+    resultDiv.innerHTML="⏳ Vérification...";
+
+    const cleanedCode = cleanQrCode(qrCode);
+    if(!cleanedCode){
+        resultDiv.innerHTML="<span class='error'>❌ QR Code invalide</span>";
+        return;
+    }
+
+    const {data: employee, error: empErr} = await supabaseClient
+        .from("employees")
+        .select("id,name")
+        .eq("qr_code", cleanedCode)
+        .single();
+
+    if(empErr || !employee){
+        resultDiv.innerHTML="<span class='error'>❌ QR Code invalide</span>";
+        return;
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+    const {data: existingToday} = await supabaseClient
+        .from("daily_presence")
+        .select("id")
+        .eq("employee_id", employee.id)
+        .eq("presence_date", today);
+
+    if(existingToday && existingToday.length>0){
+        resultDiv.innerHTML=`<span class='error'>❌ Présence déjà enregistrée aujourd'hui pour ${employee.name}</span>`;
+        return;
+    }
+
+    const now = new Date();
+    const timeString = now.toTimeString().split(' ')[0];
+
+    const { error: presErr } = await supabaseClient
+        .from("daily_presence")
+        .insert([{
+            employee_id: employee.id,
+            presence_date: today,
+            presence_time: timeString
+        }]);
+
+    if(presErr){
+        resultDiv.innerHTML="<span class='error'>❌ "+presErr.message+"</span>";
+        return;
+    }
+
+    // Flash vert
+    const flash = document.getElementById("flash");
+    flash.style.display = "block";
+    setTimeout(()=>{ flash.style.display="none"; }, 500);
+
+    resultDiv.innerHTML=`<span class='success'>✔ Présence enregistrée pour ${employee.name} à ${timeString}</span>`;
+}
+
+// Scanner caméra
+function startCameraScanner() {
+    html5QrCode = new Html5Qrcode("reader");
+    html5QrCode.start(
+        {facingMode:"environment"},
+        {fps:10, qrbox:250},
+        qrCodeMessage => {
+            html5QrCode.stop().then(() => {
+                registerPresence(qrCodeMessage).then(()=>{
+                    // Pause 1s pour voir message avant de relancer
+                    setTimeout(()=>startCameraScanner(),1000);
+                });
+            });
+        },
+        errorMessage => {}
+    ).catch(err=>{
+        document.getElementById("result").innerHTML="<span class='error'>❌ Impossible d’accéder à la caméra</span>";
+        console.error(err);
+    });
+}
+
+// Scanner fichier
+const fileInput = document.getElementById("fileInput");
+fileInput.addEventListener("change", async ()=>{
+    const file = fileInput.files[0];
+    if(!file) return;
+
+    try{
+        if(html5QrCode && html5QrCode.getState() === Html5QrcodeScannerState.SCANNING){
+            await html5QrCode.stop();
+        }
+
+        const qrCodeMessage = await html5QrCode.scanFile(file, true);
+        await registerPresence(qrCodeMessage);
+
+        setTimeout(()=>startCameraScanner(),1000);
+    } catch(err){
+        document.getElementById("result").innerHTML="<span class='error'>❌ QR Code invalide</span>";
+        console.error(err);
+    }
+});
+
+// Lampe torche
+document.getElementById("toggleFlashBtn").addEventListener("click", async ()=>{
+    if(!html5QrCode) return;
+    try{
+        torchOn = !torchOn;
+        await html5QrCode.applyVideoConstraints({advanced:[{torch: torchOn}]});
+    } catch(err){
+        console.error(err);
+        alert("Lampe non disponible sur cet appareil");
+    }
+});
+
+// Démarrage
+startCameraScanner();
+</script>
+</body>
+</html>

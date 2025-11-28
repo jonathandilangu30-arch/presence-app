@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard Présences</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+body { font-family: Arial; text-align:center; padding:20px; }
+table { margin:auto; border-collapse:collapse; }
+td, th { border:1px solid #333; padding:8px; }
+</style>
+</head>
+<body>
+<h1>Dashboard Présences</h1>
+<table id="presenceTable">
+<tr><th>Nom</th><th>Date</th><th>Heure</th></tr>
+</table>
+
+<script>
+const SUPABASE_URL = "https://smosrvzannsxvoywopwg.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNtb3Nydnphbm5zeHZveXdvcHdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQwMTIyMTQsImV4cCI6MjA3OTU4ODIxNH0.Qx9VAd_9FdIPINCgh0J_XDS0TC3O290Mot9BZCJT3S8";
+
+const supabaseClient = supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+
+async function loadPresence(){
+    const {data, error} = await supabaseClient
+        .from("daily_presence")
+        .select("employee_id,presence_date,presence_time,employees(name)")
+        .order("presence_date",{ascending:false})
+        .order("presence_time",{ascending:false})
+        .limit(100);
+
+    if(error){ alert("Erreur: "+error.message); return; }
+
+    const table=document.getElementById("presenceTable");
+    data.forEach(p=>{
+        const tr=document.createElement("tr");
+        const tdName=document.createElement("td");
+        tdName.textContent=p.employees.name;
+        const tdDate=document.createElement("td");
+        tdDate.textContent=p.presence_date;
+        const tdTime=document.createElement("td");
+        tdTime.textContent=p.presence_time;
+        tr.appendChild(tdName);
+        tr.appendChild(tdDate);
+        tr.appendChild(tdTime);
+        table.appendChild(tr);
+    });
+}
+loadPresence();
+</script>
+</body>
+</html>
