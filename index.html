@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <title>Scan QR – Présence Ultra-Robuste</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="html5-qrcode.min.js"></script> <!-- Version locale -->
+<script src="html5-qrcode.min.js"></script>
+
 <style>
 body {
     font-family: Arial; 
@@ -13,22 +14,108 @@ body {
     background: url('background.jpg') no-repeat center center fixed; 
     background-size: cover;
 }
-#reader { width:320px; margin:auto; margin-top:20px; border-radius:12px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); }
-#result { margin-top:25px; font-size:20px; font-weight:bold; }
-.success{color:green;} 
-.error{color:red;}
-button,input[type="file"] { margin-top:15px; padding:10px; font-size:16px; border-radius:8px; border:none; cursor:pointer; }
-#flash { width:50px; height:50px; background:green; border-radius:50%; margin:auto; display:none; animation: flashAnim 0.5s ease; }
-@keyframes flashAnim { 0% { transform: scale(0.5); opacity:0; } 50% { transform: scale(1.2); opacity:1; } 100% { transform: scale(1); opacity:0; } }
+
+/* Boîte du scanner */
+#reader {
+    width:320px; 
+    margin:auto; 
+    margin-top:20px; 
+    border-radius:20px; 
+    box-shadow: 0 5px 15px rgba(0,0,0,0.35);
+    overflow:hidden;
+    backdrop-filter: blur(4px);
+}
+
+/* Boutons */
+button {
+    margin-top:15px;
+    padding:12px 18px;
+    font-size:17px;
+    border-radius:50px;
+    border:none;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    width:260px;
+    margin-left:auto;
+    margin-right:auto;
+    color:white;
+    background:#0051ff;
+    transition:0.25s;
+}
+
+button:hover {
+    background:#003ad6;
+    transform:scale(1.04);
+}
+
+.btn-secondary {
+    background:#444;
+}
+.btn-secondary:hover {
+    background:#222;
+}
+
+.icon {
+    font-size:21px;
+}
+
+/* Flash succès */
+#flash {
+    width:60px; 
+    height:60px; 
+    background:limegreen; 
+    border-radius:50%; 
+    margin:auto; 
+    display:none; 
+    animation: flashAnim 0.5s ease;
+}
+
+@keyframes flashAnim {
+    0% { transform: scale(0.5); opacity:0; }
+    50% { transform: scale(1.3); opacity:1; }
+    100% { transform: scale(1); opacity:0; }
+}
+
+#result { 
+    margin-top:25px; 
+    font-size:20px; 
+    font-weight:bold; 
+    color:white;
+    text-shadow:2px 2px 4px black;
+}
+
+input[type="file"] {
+    margin-top:15px; 
+    padding:12px; 
+    font-size:16px; 
+    color:white;
+    background:#222; 
+    border-radius:10px;
+}
 </style>
 </head>
+
 <body>
-<h1>Scanner le QR Code</h1>
+
+<h1>📷 Scanner le QR Code</h1>
+
+<button id="switchCameraBtn">
+    <span class="icon">🔄</span> Changer caméra
+</button>
 
 <div id="reader"></div>
+
 <div id="flash"></div>
-<input type="file" id="fileInput" accept="image/*"><br>
-<button id="toggleFlashBtn">Activer/Désactiver Lampe</button>
+
+<input type="file" id="fileInput" accept="image/*">
+
+<button id="toggleFlashBtn" class="btn-secondary">
+    <span class="icon">🔦</span> Lampe torche
+</button>
+
 <div id="result"></div>
 
 <script>
@@ -38,8 +125,9 @@ const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let html5QrCode;
 let torchOn = false;
+let useFrontCamera = false;
 
-// Nettoyage QR
+/* Nettoyage QR */
 function cleanQrCode(rawQr){
     if(!rawQr) return null;
     let code = rawQr.replace(/[\u200B-\u200D\uFEFF\s\n\r\t]+/g,'').toUpperCase();
@@ -47,7 +135,7 @@ function cleanQrCode(rawQr){
     return match ? match[0] : null;
 }
 
-// Enregistrement présence
+/* Enregistrement présence */
 async function registerPresence(qrCode){
     const resultDiv = document.getElementById("result");
     resultDiv.innerHTML="⏳ Vérification...";
@@ -97,7 +185,7 @@ async function registerPresence(qrCode){
         return;
     }
 
-    // Flash vert
+    // Flash succès
     const flash = document.getElementById("flash");
     flash.style.display = "block";
     setTimeout(()=>{ flash.style.display="none"; }, 500);
@@ -105,35 +193,43 @@ async function registerPresence(qrCode){
     resultDiv.innerHTML=`<span class='success'>✔ Présence enregistrée pour ${employee.name} à ${timeString}</span>`;
 }
 
-// Scanner caméra
+/* Scanner caméra */
 function startCameraScanner() {
+    if(html5QrCode){
+        html5QrCode.stop();
+    }
+
     html5QrCode = new Html5Qrcode("reader");
     html5QrCode.start(
-        {facingMode:"environment"},
+        {facingMode: useFrontCamera ? "user" : "environment"},
         {fps:10, qrbox:250},
         qrCodeMessage => {
             html5QrCode.stop().then(() => {
                 registerPresence(qrCodeMessage).then(()=>{
-                    // Pause 1s pour voir message avant de relancer
                     setTimeout(()=>startCameraScanner(),1000);
                 });
             });
-        },
-        errorMessage => {}
+        }
     ).catch(err=>{
         document.getElementById("result").innerHTML="<span class='error'>❌ Impossible d’accéder à la caméra</span>";
         console.error(err);
     });
 }
 
-// Scanner fichier
+/* Bouton changer caméra */
+document.getElementById("switchCameraBtn").addEventListener("click", ()=>{
+    useFrontCamera = !useFrontCamera;
+    startCameraScanner();
+});
+
+/* Scanner fichier */
 const fileInput = document.getElementById("fileInput");
 fileInput.addEventListener("change", async ()=>{
     const file = fileInput.files[0];
     if(!file) return;
 
     try{
-        if(html5QrCode && html5QrCode.getState() === Html5QrcodeScannerState.SCANNING){
+        if(html5QrCode){
             await html5QrCode.stop();
         }
 
@@ -147,21 +243,21 @@ fileInput.addEventListener("change", async ()=>{
     }
 });
 
-// Lampe torche
+/* Lampe torche */
 document.getElementById("toggleFlashBtn").addEventListener("click", async ()=>{
     if(!html5QrCode) return;
     try{
         torchOn = !torchOn;
         await html5QrCode.applyVideoConstraints({advanced:[{torch: torchOn}]});
     } catch(err){
-        console.error(err);
         alert("Lampe non disponible sur cet appareil");
     }
 });
 
-// Démarrage
+/* Démarrage par caméra arrière */
 startCameraScanner();
 </script>
+
 </body>
 </html>
-
+ 
