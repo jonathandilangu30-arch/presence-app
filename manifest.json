@@ -2,7 +2,7 @@
   "name": "UBC — Scan de Présence",
   "short_name": "UBC Scan",
   "description": "Application de scan QR pour enregistrer les présences des employés.",
-  "start_url": "/scan.html",
+  "start_url": "/index.html",
   "scope": "/",
   "display": "standalone",
   "background_color": "#000000",
